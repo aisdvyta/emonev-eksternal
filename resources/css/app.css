@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+    --color-merah1: #B71C1C;
+    --color-merah2: #E82D1F;
+    --color-kuning1: #F7B750;
+    --color-kuning2: #FEE9A3;
+    --color-biru1: #063051;
+    --color-biru2: #184D77;
+    --color-biru3: #4987A0;
+    --color-biru4: #4C84B0;
+    --color-biru5: #C7D9E5;
+    --color-birumuda: #E2F1FB;
+    --color-hijau: #388E3C;
+    --color-hijaumuda: #E8F5E9;
+    --color-abu: #737780;
+    --color-abumuda: #D1D5D8;
+    --color-putihbg: #F3F8FB;
+}
+
+@layer components {
+    .card { @apply bg-white rounded-xl border border-biru5 shadow-sm p-5; }
+    .label { @apply block text-sm font-semibold text-biru1 mb-1; }
+    .input { @apply block w-full rounded-lg border border-abumuda bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-biru4 disabled:bg-slate-100 disabled:text-slate-500; }
+    /* Tailwind v4: @apply tidak bisa memakai kelas komponen buatan sendiri, jadi utilitas ditulis lengkap. */
+    .btn-primary { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition bg-biru1 text-white hover:bg-biru2; }
+    .btn-outline { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition border border-biru4 text-biru2 bg-white hover:bg-birumuda; }
+    .badge { @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+    .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-abu; }
+    .td { @apply px-3 py-3 text-sm align-top; }
+}
