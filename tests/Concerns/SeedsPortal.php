@@ -5,6 +5,8 @@ namespace Tests\Concerns;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 trait SeedsPortal
 {
@@ -12,12 +14,14 @@ trait SeedsPortal
 
     /**
      * Skenario dasar: periode berjalan, 1 satker status visitasi (5), visitasi & wawancara terjadwal kemarin,
-     * penilai 100 ditugaskan, penilai 101 TIDAK ditugaskan.
+     * penilai 100 ditugaskan, penilai 101 (juga penilai eksternal) TIDAK ditugaskan.
      *
      * @param  array  $o  override: period(array), visit_at, interview_at, status, is_final
      */
     protected function seedPortal(array $o = []): array
     {
+        \Illuminate\Support\Facades\Cache::forget('periods_desc');
+        $r = new \ReflectionProperty(\App\Models\Period::class, 'activePeriodCache'); $r->setAccessible(true); $r->setValue(null, null);
         $today = today();
         $visitId = (string) Str::uuid();
 
@@ -25,15 +29,32 @@ trait SeedsPortal
             'id_periode' => 1,
             'periode_start' => $today->copy()->subMonths(2)->toDateString(),
             'periode_end' => $today->copy()->addMonths(2)->toDateString(),
+            'saq_start' => $today->copy()->subMonths(2)->toDateString(),
+            'saq_end' => $today->copy()->subDays(20)->toDateString(),
+            'eval_start' => $today->copy()->subDays(19)->toDateString(),
+            'eval_end' => $today->copy()->subDays(11)->toDateString(),
             'visit_start' => $today->copy()->subDays(10)->toDateString(),
             'visit_end' => $today->copy()->addDays(10)->toDateString(),
             'interview_start' => $today->copy()->subDays(10)->toDateString(),
             'interview_end' => $today->copy()->addDays(10)->toDateString(),
+            'result_start' => $today->copy()->addDays(11)->toDateString(),
+            'result_end' => $today->copy()->addDays(30)->toDateString(),
         ], $o['period'] ?? []));
 
         DB::table('master_satker')->insert(['kode_satker' => '3501', 'nama_satker' => 'BPS Kabupaten Contoh']);
         DB::table('result')->insert(['id_result' => 10, 'kode_satker' => '3501', 'id_periode' => 1]);
         DB::table('submissions')->insert(['id_submission' => 20, 'id_result' => 10, 'status' => $o['status'] ?? 5]);
+
+        DB::table('master_indikator')->insert(['id_indicators' => 1, 'nama_indikator' => 'Indikator Satu']);
+        DB::table('master_sub_indikator')->insert(['id_sub_indicators' => 1, 'id_indicators' => 1, 'nama_sub_indikator' => 'Sub Satu']);
+        DB::table('master_pertanyaan')->insert([
+            'id_master_pertanyaan' => 1, 'order_no' => 1, 'id_sub_indicators' => 1, 'id_indicators' => 1,
+            'ques_text' => 'Apakah ada SOP?', 'bobot_pertanyaan' => 10,
+        ]);
+        DB::table('answer')->insert([
+            'id_answer' => (string) Str::uuid(), 'id_submission' => 20, 'id_question' => 1, 'id_indicators' => 1,
+            'answer' => 1, 'link_ppid' => 'https://contoh.test/ppid',
+        ]);
 
         DB::table('visitasi')->insert([
             'id_visit' => $visitId, 'id_result' => 10, 'visit_mode' => $o['visit_mode'] ?? 'offline',
@@ -46,13 +67,15 @@ trait SeedsPortal
             'is_final' => $o['is_final'] ?? false,
         ]);
 
+        $role = Role::findOrCreate('penilai_eksternal', 'web');
         foreach ([100 => 'Penilai Satu', 101 => 'Penilai Dua'] as $id => $name) {
             DB::table('users')->insert([
                 'id_user' => $id, 'name' => $name, 'nama_user' => 'penilai'.$id, 'email' => "penilai{$id}@example.test",
-                'password' => Hash::make(self::PASSWORD), 'is_active' => true,
-                'created_at' => now(), 'updated_at' => now(),
+                'password' => Hash::make(self::PASSWORD), 'is_eksternal' => 1,
             ]);
+            DB::table('model_has_roles')->insert(['role_id' => $role->id, 'model_type' => \App\Models\User::class, 'model_id' => $id]);
         }
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         DB::table('visitasi_evaluators')->insert(['id_visit' => $visitId, 'id_user' => 100]);
         DB::table('interview_evaluators')->insert(['id_interview' => 30, 'id_user' => 100]);
@@ -100,7 +123,7 @@ trait SeedsPortal
         return $this->call($method, $uri, [], [], [], $server, $content);
     }
 
-    /** Snapshot minimal yang valid. */
+    /** Snapshot minimal yang valid (skema pusat). */
     protected function sampleSnapshot(): array
     {
         return [
@@ -109,7 +132,8 @@ trait SeedsPortal
             'data' => [
                 'users' => [[
                     'id_user' => 200, 'name' => 'Penilai Baru', 'email' => 'Baru@Example.test',
-                    'nama_user' => 'penilai200', 'is_active' => true,
+                    'nama_user' => 'penilai200', 'instansi' => 'Univ X', 'is_active' => true,
+                    'password_hash' => password_hash('rahasia123', PASSWORD_BCRYPT),
                 ]],
                 'periods' => [[
                     'id_periode' => 5, 'periode_start' => '2026-01-01', 'periode_end' => '2026-12-31',

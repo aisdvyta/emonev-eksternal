@@ -2,15 +2,8 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Verifikasi kode login (OTP email)
-    |--------------------------------------------------------------------------
-    | Setelah kata sandi benar, penilai harus memasukkan kode 6 digit yang dikirim ke emailnya.
-    */
-    'login_otp' => (bool) env('EXTERNAL_LOGIN_OTP', true),
-    'otp_ttl_minutes' => (int) env('EXTERNAL_OTP_TTL_MINUTES', 10),
-    'otp_max_attempts' => 5,
+    // Alamat sistem pusat (untuk pegawai BPS yang memilih "Badan Pusat Statistik" di halaman login). Hanya terbuka dari jaringan BPS.
+    'pusat_url' => env('PUSAT_URL', 'https://halokip.web.bps.go.id'),
 
     /*
     |--------------------------------------------------------------------------

@@ -1,0 +1,975 @@
+@php
+    $userRole = Auth::user()?->role?->nama_role;
+    $isSuperEval = $userRole === 'super_evaluator';
+    $isExternal = $userRole === 'penilai_eksternal';
+    $routePrefix = $isSuperEval ? 'super-evaluator' : ($isExternal ? 'penilai-eksternal' : 'evaluator');
+@endphp
+<div data-table-prefix="monwaw">
+    @if (!$isExternal)
+    {{-- Modal Filter Export Wawancara --}}
+    <div id="modal-export-wawancara" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="px-7 py-5 bg-biru2 text-white flex items-center justify-between shrink-0 text-left">
+                <div>
+                    <h3 class="font-bold text-base">Unduh Rekap Wawancara Excel</h3>
+                    <p class="text-white/70 text-xs mt-0.5">Pilih filter sebelum mengunduh</p>
+                </div>
+                <button onclick="document.getElementById('modal-export-wawancara').classList.add('hidden')"
+                    class="text-white/70 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <form id="form-export-wawancara" method="GET" action="{{ route($routePrefix . '.monitor-wawancara.export') }}" onsubmit="handleExportWawancaraSubmit(event, this)"
+                class="flex flex-col flex-1 min-h-0 text-left">
+                <div class="p-7 space-y-6 overflow-y-auto flex-1">
+                    <input type="hidden" name="id_periode" value="{{ $periodeId }}">
+
+                    {{-- Filter Kabupaten/Kota --}}
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs font-bold uppercase tracking-wider text-biru4">Kabupaten / Kota</label>
+                            <label class="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-biru2">
+                                <input type="checkbox" id="check-all-waw-kota" onchange="toggleAllWawKota(this)"
+                                    class="w-3.5 h-3.5 rounded accent-biru2" checked>
+                                Pilih Semua
+                            </label>
+                        </div>
+                        <!-- Search kota -->
+                        <div class="relative mb-2">
+                            <input type="text" id="search-waw-kota" placeholder="Cari kab/kota..."
+                                oninput="filterWawKotaList(this.value)"
+                                class="w-full rounded-lg border border-abubiru bg-putihbg pl-8 pr-3 py-2 text-sm text-biru1 placeholder-biru4/50 focus:border-biru2 focus:outline-none focus:ring-2 focus:ring-biru2/20">
+                            <svg class="w-4 h-4 text-biru4 absolute left-2.5 top-2.5 pointer-events-none" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <!-- List kota -->
+                        <div id="list-waw-kota"
+                            class="border border-abubiru rounded-xl bg-putihbg max-h-60 overflow-y-auto px-3 py-2 space-y-1">
+                            @foreach ($satkers as $satker)
+                                <label
+                                    class="waw-kota-item flex items-center gap-2.5 cursor-pointer hover:bg-biru5/20 rounded-lg px-2 py-1 transition"
+                                    data-nama="{{ strtolower($satker->nama_satker) }}">
+                                    <input type="checkbox" name="kota[]"
+                                        value="{{ $satker->nama_satker }}"
+                                        class="waw-kota-checkbox w-3.5 h-3.5 rounded accent-biru2" checked>
+                                    <span
+                                        class="text-sm text-biru1 font-medium">{{ $satker->nama_satker }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="flex justify-end gap-3 px-7 py-5 border-t border-abubiru shrink-0">
+                    <button type="button" onclick="document.getElementById('modal-export-wawancara').classList.add('hidden')"
+                        class="px-5 py-2.5 rounded-xl border border-abubiru text-biru1 font-semibold text-sm bg-white hover:bg-putihbg transition">
+                        Batal
+                    </button>
+                    <button type="submit"
+                        class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-hijau text-white font-bold text-sm hover:opacity-90 transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Unduh Excel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    @endif
+
+    <!-- Stat Cards -->
+    <section class="grid grid-cols-3 gap-2.5 sm:gap-4 md:gap-6 mb-6">
+        <x-ui.card-stat label="TOTAL KABKOT LOLOS" value="{{ $totalLolos }}" color="primary">
+            <x-slot name="icon">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                    </path>
+                </svg>
+            </x-slot>
+        </x-ui.card-stat>
+
+        <x-ui.card-stat label="SUDAH WAWANCARA" value="{{ $completedCount }}" color="success">
+            <x-slot name="icon">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z">
+                    </path>
+                </svg>
+            </x-slot>
+        </x-ui.card-stat>
+
+        <x-ui.card-stat label="BELUM WAWANCARA" value="{{ $notCompletedCount }}" color="info">
+            <x-slot name="icon">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z">
+                    </path>
+                </svg>
+            </x-slot>
+        </x-ui.card-stat>
+    </section>
+
+    <x-tables.monitoring-table title="Daftar Kabupaten & Kota" hasCards="true">
+        <x-slot name="headerCenter">
+            <!-- Search + Unduh Excel (mobile: side by side) -->
+            <div class="flex items-center gap-2">
+                <div class="relative flex-1" wire:key="monwaw-search-wrapper">
+                    <input type="text" wire:model.live.debounce.300ms="search"
+                        id="monwaw-search-input"
+                        wire:key="monwaw-search-input"
+                        placeholder="Cari Kab/Kota..."
+                        class="w-full rounded-lg border border-white/30 bg-white/20 shadow-sm pl-9 pr-4 py-2 text-sm text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/50 transition">
+                    <div class="absolute left-3 top-2.5 text-white/70">
+                        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <!-- Unduh Excel: mobile only -->
+                @if (!$isExternal)
+                    <button type="button"
+                        onclick="document.getElementById('modal-export-wawancara').classList.remove('hidden')"
+                        class="md:hidden inline-flex items-center gap-1.5 rounded-xl bg-hijau hover:opacity-90 text-white px-3 py-2 text-xs font-bold shadow-md transition cursor-pointer shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span>Excel</span>
+                    </button>
+                @endif
+            </div>
+        </x-slot>
+
+        <x-slot name="headerActions">
+            <div class="flex items-center gap-3">
+                <!-- Unduh Excel: desktop only -->
+                @if (!$isExternal)
+                    <button type="button"
+                       onclick="document.getElementById('modal-export-wawancara').classList.remove('hidden')"
+                       class="hidden md:inline-flex items-center gap-1.5 rounded-xl bg-hijau hover:opacity-90 text-white px-4 py-2.5 text-xs font-bold shadow-md hover:shadow-lg transition cursor-pointer">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span>Unduh Excel</span>
+                    </button>
+                @endif
+                <!-- Reset Filter: desktop only -->
+                <button type="button" 
+                        wire:click="resetFilters" 
+                        onclick="monWawResetAllFilters()" 
+                        class="hidden md:inline-flex items-center gap-1.5 rounded-xl bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 text-xs font-bold shadow-md hover:shadow-lg transition cursor-pointer">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                    <span>Reset Filter</span>
+                </button>
+            </div>
+        </x-slot>
+        <x-slot name="mobileFilters">
+            <div x-data="{ openMobileFilter: false }" class="space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <button type="button" @click="openMobileFilter = !openMobileFilter"
+                        class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-biru4/10 border border-abubiru text-biru1 text-xs font-bold hover:bg-biru4/20 transition cursor-pointer">
+                        <svg class="w-4 h-4 text-biru2" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                        </svg>
+                        <span>Filter Kolom</span>
+                        <svg class="w-3.5 h-3.5 text-biru3 transition-transform" :class="openMobileFilter ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <button type="button" wire:click="resetFilters" onclick="monWawResetAllFilters()"
+                        class="inline-flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-600">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                        Reset Filter
+                    </button>
+                </div>
+
+                <div x-show="openMobileFilter" x-collapse x-cloak class="pt-3 border-t border-abubiru/40 space-y-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                        {{-- Filter Periode (multi-select + searchable + checkbox) --}}
+                        @php
+                            $periodeOptions = $periods->map(fn($p) => [
+                                'value' => (string) $p->tahun,
+                                'label' => 'Tahun ' . $p->tahun . ($p->nama ? ' (' . $p->nama . ')' : ''),
+                            ])->values();
+                        @endphp
+                        <div class="bg-white border border-abubiru/60 rounded-2xl shadow-xs"
+                            x-data="(function() {
+                                const opts = @js($periodeOptions);
+                                return {
+                                    isOpen: false,
+                                    search: '',
+                                    opts,
+                                    get sel() {
+                                        const v = $wire.filterTahun;
+                                        return Array.isArray(v) ? v : (v ? [String(v)] : []);
+                                    },
+                                    get triggerLabel() {
+                                        if (this.sel.length === 0) return 'Semua Periode';
+                                        if (this.sel.length === 1) {
+                                            const f = opts.find(o => o.value === this.sel[0]);
+                                            return f ? f.label : 'Semua Periode';
+                                        }
+                                        return this.sel.length + ' periode dipilih';
+                                    },
+                                    get filtered() {
+                                        const q = this.search.toLowerCase().trim();
+                                        if (!q) return this.opts;
+                                        return this.opts.filter(o => o.label.toLowerCase().includes(q));
+                                    },
+                                    toggle(val) {
+                                        let cur = [...this.sel];
+                                        const i = cur.indexOf(val);
+                                        if (i >= 0) cur.splice(i, 1); else cur.push(val);
+                                        $wire.set('filterTahun', cur);
+                                    },
+                                    clearAll() {
+                                        $wire.set('filterTahun', []);
+                                        this.search = '';
+                                    }
+                                };
+                            })()">
+                            <div class="bg-[#f0f5fa] px-3.5 py-2 border-b border-abubiru/40 flex items-center justify-between rounded-t-2xl">
+                                <span class="font-bold text-xs text-biru1">Filter Periode</span>
+                                <span class="bg-biru1 text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full" wire:loading.remove wire:target="filterTahun">
+                                    {{ !empty($filterTahun) ? count((array)$filterTahun) . ' dipilih' : 'Semua' }}
+                                </span>
+                            </div>
+                            <div class="p-2 relative">
+                                <button type="button" @click="isOpen = !isOpen"
+                                    class="w-full flex items-center justify-between rounded-xl border border-abubiru/60 bg-slate-50/50 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-biru2/20 transition"
+                                    :class="sel.length > 0 ? 'text-biru1' : 'text-biru3'">
+                                    <span x-text="triggerLabel" class="truncate text-left"></span>
+                                    <svg class="w-3.5 h-3.5 text-biru3 shrink-0 ml-2 transition-transform duration-200" :class="isOpen ? 'rotate-180' : ''"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                <div x-show="isOpen" @click.away="isOpen = false" x-cloak
+                                    x-transition:enter="transition ease-out duration-150"
+                                    x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+                                    x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                                    x-transition:leave="transition ease-in duration-100"
+                                    x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
+                                    class="absolute left-0 right-0 top-full mt-1 bg-white border border-abubiru rounded-xl shadow-xl p-2 z-100">
+                                    <input type="text" placeholder="Cari periode..."
+                                        x-model="search"
+                                        x-ref="periodeSearch"
+                                        x-init="$watch('isOpen', v => v && $nextTick(() => $refs.periodeSearch?.focus()))"
+                                        class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2 focus:ring-1 focus:ring-biru2/20">
+                                    <div @click="clearAll()"
+                                        :class="sel.length === 0 ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                        class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none mb-1 border-b border-abubiru/30 pb-2">
+                                        <input type="checkbox" :checked="sel.length === 0" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                        <span>Semua Periode</span>
+                                    </div>
+                                    <div class="max-h-48 overflow-y-auto space-y-0.5">
+                                        <template x-for="opt in filtered" :key="opt.value">
+                                            <div @click="toggle(opt.value)"
+                                                :class="sel.includes(opt.value) ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                                class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none">
+                                                <input type="checkbox" :checked="sel.includes(opt.value)" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                                <span x-text="opt.label" class="truncate flex-1"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="filtered.length === 0" class="text-xs text-center text-biru3 py-3 italic">Tidak ditemukan</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Filter Status (multi-select + searchable + checkbox) --}}
+                        <div class="bg-white border border-abubiru/60 rounded-2xl shadow-xs"
+                            x-data="{
+                                isOpen: false,
+                                search: '',
+                                opts: [
+                                    { value: 'belum_dinilai', label: 'Belum Dinilai' },
+                                    { value: 'draft',         label: 'Draft Penilaian' },
+                                    { value: 'sudah_dinilai', label: 'Sudah Dinilai' },
+                                ],
+                                get sel() {
+                                    const v = $wire.filterStatus;
+                                    return Array.isArray(v) ? v : (v ? [String(v)] : []);
+                                },
+                                get triggerLabel() {
+                                    if (this.sel.length === 0) return 'Semua Status';
+                                    if (this.sel.length === 1) {
+                                        const f = this.opts.find(o => o.value === this.sel[0]);
+                                        return f ? f.label : 'Semua Status';
+                                    }
+                                    return this.sel.length + ' status dipilih';
+                                },
+                                get filtered() {
+                                    const q = this.search.toLowerCase().trim();
+                                    if (!q) return this.opts;
+                                    return this.opts.filter(o => o.label.toLowerCase().includes(q));
+                                },
+                                toggle(val) {
+                                    let cur = [...this.sel];
+                                    const i = cur.indexOf(val);
+                                    if (i >= 0) cur.splice(i, 1); else cur.push(val);
+                                    $wire.set('filterStatus', cur);
+                                },
+                                clearAll() {
+                                    $wire.set('filterStatus', []);
+                                    this.search = '';
+                                }
+                            }">
+                            <div class="bg-[#f0f5fa] px-3.5 py-2 border-b border-abubiru/40 flex items-center justify-between rounded-t-2xl">
+                                <span class="font-bold text-xs text-biru1">Filter Status</span>
+                                <span class="bg-biru1 text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full" wire:loading.remove wire:target="filterStatus">
+                                    {{ !empty($filterStatus) ? count((array)$filterStatus) . ' dipilih' : 'Semua' }}
+                                </span>
+                            </div>
+                            <div class="p-2 relative">
+                                <button type="button" @click="isOpen = !isOpen"
+                                    class="w-full flex items-center justify-between rounded-xl border border-abubiru/60 bg-slate-50/50 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-biru2/20 transition"
+                                    :class="sel.length > 0 ? 'text-biru1' : 'text-biru3'">
+                                    <span x-text="triggerLabel" class="truncate text-left"></span>
+                                    <svg class="w-3.5 h-3.5 text-biru3 shrink-0 ml-2 transition-transform duration-200" :class="isOpen ? 'rotate-180' : ''"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                <div x-show="isOpen" @click.away="isOpen = false" x-cloak
+                                    x-transition:enter="transition ease-out duration-150"
+                                    x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+                                    x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                                    x-transition:leave="transition ease-in duration-100"
+                                    x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
+                                    class="absolute left-0 right-0 top-full mt-1 bg-white border border-abubiru rounded-xl shadow-xl p-2 z-100">
+                                    <input type="text" placeholder="Cari status..."
+                                        x-model="search"
+                                        x-ref="statusSearch"
+                                        x-init="$watch('isOpen', v => v && $nextTick(() => $refs.statusSearch?.focus()))"
+                                        class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2 focus:ring-1 focus:ring-biru2/20">
+                                    <div @click="clearAll()"
+                                        :class="sel.length === 0 ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                        class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none mb-1 border-b border-abubiru/30 pb-2">
+                                        <input type="checkbox" :checked="sel.length === 0" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                        <span>Semua Status</span>
+                                    </div>
+                                    <div class="max-h-48 overflow-y-auto space-y-0.5">
+                                        <template x-for="opt in filtered" :key="opt.value">
+                                            <div @click="toggle(opt.value)"
+                                                :class="sel.includes(opt.value) ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                                class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none">
+                                                <input type="checkbox" :checked="sel.includes(opt.value)" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                                <span x-text="opt.label" class="truncate flex-1"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="filtered.length === 0" class="text-xs text-center text-biru3 py-3 italic">Tidak ditemukan</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Filter Satker (multi-select + searchable + checkbox) --}}
+                        <div class="bg-white border border-abubiru/60 rounded-2xl shadow-xs sm:col-span-2"
+                            x-data="(function() {
+                                const satkers = @js($satkers->sortBy('kode_satker')->map(fn($s) => ['value' => $s->kode_satker, 'label' => '(' . $s->kode_satker . ') ' . $s->nama_satker])->values());
+                                return {
+                                    isOpen: false,
+                                    search: '',
+                                    satkers,
+                                    get sel() {
+                                        const v = $wire.filterKodeSatker;
+                                        return Array.isArray(v) ? v : (v ? [String(v)] : []);
+                                    },
+                                    get triggerLabel() {
+                                        if (this.sel.length === 0) return 'Semua Satker';
+                                        if (this.sel.length === 1) {
+                                            const f = satkers.find(s => s.value === this.sel[0]);
+                                            return f ? f.label : 'Semua Satker';
+                                        }
+                                        return this.sel.length + ' satker dipilih';
+                                    },
+                                    get filtered() {
+                                        const q = this.search.toLowerCase().trim();
+                                        if (!q) return this.satkers;
+                                        return this.satkers.filter(s => s.label.toLowerCase().includes(q));
+                                    },
+                                    toggle(val) {
+                                        let cur = [...this.sel];
+                                        const i = cur.indexOf(val);
+                                        if (i >= 0) cur.splice(i, 1); else cur.push(val);
+                                        $wire.set('filterKodeSatker', cur);
+                                    },
+                                    clearAll() {
+                                        $wire.set('filterKodeSatker', []);
+                                        this.search = '';
+                                    }
+                                };
+                            })()">
+                            <div class="bg-[#f0f5fa] px-3.5 py-2 border-b border-abubiru/40 flex items-center justify-between rounded-t-2xl">
+                                <span class="font-bold text-xs text-biru1">Filter Satker</span>
+                                <span class="bg-biru1 text-white text-xs font-extrabold px-2.5 py-0.5 rounded-full" wire:loading.remove wire:target="filterKodeSatker">
+                                    {{ !empty($filterKodeSatker) ? count((array)$filterKodeSatker) . ' dipilih' : 'Semua' }}
+                                </span>
+                            </div>
+                            <div class="p-2 relative">
+                                <button type="button" @click="isOpen = !isOpen"
+                                    class="w-full flex items-center justify-between rounded-xl border border-abubiru/60 bg-slate-50/50 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-biru2/20 transition"
+                                    :class="sel.length > 0 ? 'text-biru1' : 'text-biru3'">
+                                    <span x-text="triggerLabel" class="truncate text-left"></span>
+                                    <svg class="w-3.5 h-3.5 text-biru3 shrink-0 ml-2 transition-transform duration-200" :class="isOpen ? 'rotate-180' : ''"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                <div x-show="isOpen" @click.away="isOpen = false" x-cloak
+                                    x-transition:enter="transition ease-out duration-150"
+                                    x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+                                    x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                                    x-transition:leave="transition ease-in duration-100"
+                                    x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
+                                    class="absolute left-0 right-0 top-full mt-1 bg-white border border-abubiru rounded-xl shadow-xl p-2 z-100">
+                                    <input type="text" placeholder="Cari kode / nama satker..."
+                                        x-model="search"
+                                        x-ref="satkerSearch"
+                                        x-init="$watch('isOpen', v => v && $nextTick(() => $refs.satkerSearch?.focus()))"
+                                        class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2 focus:ring-1 focus:ring-biru2/20">
+                                    <div @click="clearAll()"
+                                        :class="sel.length === 0 ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                        class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none mb-1 border-b border-abubiru/30 pb-2">
+                                        <input type="checkbox" :checked="sel.length === 0" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                        <span>Semua Satker</span>
+                                    </div>
+                                    <div class="max-h-48 overflow-y-auto space-y-0.5">
+                                        <template x-for="opt in filtered" :key="opt.value">
+                                            <div @click="toggle(opt.value)"
+                                                :class="sel.includes(opt.value) ? 'bg-biru5/30 font-bold text-biru1' : 'text-slate-700 font-medium'"
+                                                class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-biru5/20 text-xs transition cursor-pointer select-none">
+                                                <input type="checkbox" :checked="sel.includes(opt.value)" class="w-3.5 h-3.5 rounded accent-biru2 pointer-events-none">
+                                                <span x-text="opt.label" class="truncate flex-1"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="filtered.length === 0" class="text-xs text-center text-biru3 py-3 italic">Tidak ditemukan</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </x-slot>
+
+        <x-slot name="cards">
+            @forelse($submissions as $sub)
+                @php
+                    $int = $sub->interview;
+                    $satker = $sub->result?->satker;
+                    $isSudahDinilai = ($sub->status >= 6 || ($int && $int->score_interviewer_1 !== null && $int->score_interviewer_2 !== null && $int->score_interviewer_3 !== null));
+                @endphp
+                @if($satker)
+                    <div class="bg-white rounded-xl border border-abubiru p-4 shadow-xs space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="font-bold text-biru1 text-sm leading-snug">{{ $satker->nama_satker }}</div>
+                            <span class="inline-flex rounded-full bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 text-xs font-semibold shrink-0">
+                                {{ $sub->period->tahun }}
+                            </span>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 gap-2 pt-2 border-t border-abubiru/30 text-xs font-semibold text-biru3">
+                            <div class="flex justify-between items-center gap-2">
+                                <span>Kode Satker:</span>
+                                <span class="text-biru1 font-mono">{{ $satker->kode_satker }}</span>
+                            </div>
+                            <div class="flex justify-between items-start gap-4">
+                                <span class="shrink-0">Petugas Wawancara:</span>
+                                <span class="text-biru2 text-right leading-snug">
+                                    @php
+                                        $interviewers = array_filter([
+                                            $int?->interviewer1?->name ?? null,
+                                            $int?->interviewer2?->name ?? null,
+                                            $int?->interviewer3?->name ?? null,
+                                        ]);
+                                    @endphp
+                                    @if($int && $int->interview_at && count($interviewers) > 0)
+                                        {{ implode(', ', $interviewers) }}
+                                    @else
+                                        -
+                                    @endif
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center gap-4">
+                                <span class="shrink-0">Jadwal Wawancara:</span>
+                                <span class="text-biru1 text-right">
+                                     @if($int && $int->interview_at)
+                                         {{ \Carbon\Carbon::parse($int->interview_at)->translatedFormat('d M Y') }}
+                                     @else
+                                        <span class="text-xs text-biru4 italic">Belum Dijadwalkan</span>
+                                    @endif
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between items-center gap-2">
+                                <span>Status:</span>
+                                @php
+                                    $isWawancaraFinalized = ($int && $int->score_interviewer_1 !== null && !str_starts_with($int->note_interviewer_1 ?? '', '[DRAFT]')
+                                        && $int->score_interviewer_2 !== null && !str_starts_with($int->note_interviewer_2 ?? '', '[DRAFT]')
+                                        && $int->score_interviewer_3 !== null && !str_starts_with($int->note_interviewer_3 ?? '', '[DRAFT]'));
+                                    $isAnyWawancaraScored = ($int && ($int->score_interviewer_1 !== null || $int->score_interviewer_2 !== null || $int->score_interviewer_3 !== null));
+                                @endphp
+                                @if($isWawancaraFinalized)
+                                    <span class="inline-flex rounded-full bg-hijau2/10 text-hijau px-2.5 py-0.5 text-xs font-bold">
+                                        Sudah Dinilai
+                                    </span>
+                                @elseif($isAnyWawancaraScored)
+                                    <span class="inline-flex rounded-full bg-oren2/10 text-oren2 px-2.5 py-0.5 text-xs font-bold">
+                                        Draft Penilaian
+                                    </span>
+                                @else
+                                    <span class="inline-flex rounded-full bg-abubiru/50 text-biru4 px-2.5 py-0.5 text-xs font-bold">
+                                        Belum Dinilai
+                                    </span>
+                                @endif
+                            </div>
+                            <div class="flex justify-between items-center gap-2">
+                                <span>Nilai Wawancara:</span>
+                                <span class="font-bold text-biru1 text-sm">
+                                    @if($int && $int->interview_score !== null)
+                                        {{ number_format($int->interview_score, 2) }}
+                                    @else
+                                        -
+                                    @endif
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-end gap-2 pt-3 border-t border-abubiru/30">
+                            @php
+                                $isSuperEval = Auth::user()?->role?->nama_role === 'super_evaluator';
+                                $isUserInterviewer = $int && (
+                                    $int->interviewers->contains('id_user', Auth::id())
+                                    || ($int->interviewer_1_id == Auth::id()) 
+                                    || ($int->interviewer_2_id == Auth::id()) 
+                                    || ($int->interviewer_3_id == Auth::id())
+                                    || ($int->external_interviewer_id == Auth::id())
+                                    || collect($int->interview_data ?? [])->contains(fn($item) => isset($item['id_user']) && (int)$item['id_user'] === (int)Auth::id())
+                                );
+                                $isScheduled = $int && $int->interview_at;
+                            @endphp
+                            @if ($isScheduled && $isSuperEval && !$isSudahDinilai)
+                                <button @click="selectedInterviewIds = ['{{ $sub->id_result }}']; selectedInterviewId = '{{ $int ? $int->id_interview : '' }}'; isEditScheduled = true; modalTitle = 'Edit Jadwal Wawancara'; selectedSatkerName = '{{ $satker ? ('(' . $satker->kode_satker . ') ' . $satker->nama_satker) : 'BPS Kab/Kota' }}'; interviewDate = '{{ $int->interview_at ? \Carbon\Carbon::parse($int->interview_at)->format('Y-m-d') : '' }}'; meetsLink = '{{ $int ? $int->meets_link : '' }}'; interviewer1Id = '{{ $int->interviewer_1_id ?? '' }}'; interviewer2Id = '{{ $int->interviewer_2_id ?? '' }}'; interviewer3Id = '{{ $int->interviewer_3_id ?? '' }}'; externalInterviewerId = '{{ $int ? ($int->external_interviewer_id ?? '') : '' }}'; externalInterviewerIds = {{ json_encode($int ? $int->external_interviewer_ids : []) }}; showJadwalModal = true"
+                                    class="inline-flex items-center justify-center rounded-lg bg-oren2 px-3 py-1.5 text-xs text-white hover:opacity-90 font-bold transition shadow-xs cursor-pointer"
+                                    title="Edit Jadwal">
+                                    Edit
+                                </button>
+                            @endif
+                            @if ($isScheduled && ($isSuperEval || $isUserInterviewer))
+                                <a href="{{ route('evaluasi.wawancara.review', \App\Helpers\SecureId::encrypt($int->id_interview)) }}"
+                                    wire:navigate.hover
+                                    class="inline-flex items-center justify-center rounded-lg bg-biru2 px-3 py-1.5 text-xs text-white hover:opacity-90 font-bold transition shadow-xs"
+                                    title="Nilai">
+                                    <span>Nilai</span>
+                                </a>
+                            @endif
+                            @if (!$isScheduled || (!$isSuperEval && !$isUserInterviewer))
+                                <span class="text-xs text-biru3 font-medium">-</span>
+                            @endif
+                        </div>
+                    </div>
+                @endif
+            @empty
+                <div class="p-4 text-center text-biru3 border border-dashed border-abubiru rounded-xl bg-white font-medium text-xs">
+                    Tidak ada data Kabupaten/Kota yang sesuai filter atau tahap wawancara.
+                </div>
+            @endforelse
+        </x-slot>
+
+        <x-slot name="thead">
+            <thead class="bg-putihbg text-xs font-bold uppercase tracking-wider text-biru4 border-b border-abubiru">
+                <tr>
+                    {{-- TAHUN / PERIODE with Excel Filter --}}
+                    <th class="px-8 py-5 text-left border-r border-abubiru/20">
+                        <div class="relative inline-block text-left">
+                            <div class="flex items-center gap-1 cursor-pointer" onclick="monWawToggleFilter('tahun')">
+                                <span>PERIODE</span>
+                                <svg class="w-3 h-3 text-biru3 hover:text-biru1 transition" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                            </div>
+                            <div id="monwaw-filter-tahun" class="hidden absolute left-0 top-full mt-1 z-40 bg-white border border-abubiru rounded-xl shadow-lg w-48 p-3 text-biru1 font-medium normal-case text-left">
+                                <input type="text" placeholder="Cari..." oninput="monWawFilterList('tahun', this.value)" class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2">
+                                <label class="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-biru2 cursor-pointer mb-1">
+                                    <input type="checkbox" id="monwaw-all-tahun" onchange="monWawToggleAll('tahun', this)" class="accent-biru2">
+                                    Semua Periode
+                                </label>
+                                <div id="monwaw-list-tahun" class="max-h-40 overflow-y-auto space-y-1">
+                                    @foreach($periods as $p)
+                                        <label class="monwaw-item-tahun flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-biru5/20 cursor-pointer text-xs" data-value="{{ strtolower($p->tahun) }}">
+                                            <input type="checkbox" class="monwaw-cb-tahun accent-biru2" value="{{ $p->tahun }}"
+                                                {{ in_array((string)$p->tahun, (array)$filterTahun) ? 'checked' : '' }}>
+                                            {{ $p->nama ?? $p->tahun }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-abubiru">
+                                    <button type="button" onclick="monWawCloseFilter('tahun')" class="px-3 py-1 text-xs font-semibold border border-abubiru rounded-md hover:bg-slate-50 transition">Batal</button>
+                                    <button type="button" onclick="monWawApplyFilter('tahun')" class="px-3 py-1 text-xs font-bold bg-hijau text-white rounded-md hover:opacity-90 transition">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </th>
+
+                    {{-- KODE SATKER with Excel Filter --}}
+                    <th class="px-8 py-5 text-center border-r border-abubiru/20">
+                        <div class="relative inline-block text-left">
+                            <div class="flex items-center justify-center gap-1 cursor-pointer" onclick="monWawToggleFilter('kode_satker')">
+                                <span>KODE SATKER</span>
+                                <svg class="w-3 h-3 text-biru3 hover:text-biru1 transition" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                            </div>
+                            <div id="monwaw-filter-kode_satker" class="hidden absolute left-1/2 -translate-x-1/2 top-full mt-1 z-40 bg-white border border-abubiru rounded-xl shadow-lg w-52 p-3 text-biru1 font-medium normal-case text-left">
+                                <input type="text" placeholder="Cari..." oninput="monWawFilterList('kode_satker', this.value)" class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2">
+                                <label class="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-biru2 cursor-pointer mb-1">
+                                    <input type="checkbox" id="monwaw-all-kode_satker" onchange="monWawToggleAll('kode_satker', this)" checked class="accent-biru2">
+                                    (Select All)
+                                </label>
+                                <div id="monwaw-list-kode_satker" class="max-h-40 overflow-y-auto space-y-1">
+                                    @foreach($submissions as $sub)
+                                        @if($sub->user && $sub->user->masterSatker)
+                                        <label class="monwaw-item-kode_satker flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-biru5/20 cursor-pointer text-xs" data-value="{{ strtolower($sub->user->masterSatker->kode_satker) }}">
+                                            <input type="checkbox" class="monwaw-cb-kode_satker accent-biru2" value="{{ $sub->user->masterSatker->kode_satker }}" checked>
+                                            {{ $sub->user->masterSatker->kode_satker }}
+                                        </label>
+                                        @endif
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-abubiru">
+                                    <button type="button" onclick="monWawCloseFilter('kode_satker')" class="px-3 py-1 text-xs font-semibold border border-abubiru rounded-md hover:bg-slate-50 transition">Batal</button>
+                                    <button type="button" onclick="monWawApplyFilter('kode_satker')" class="px-3 py-1 text-xs font-bold bg-hijau text-white rounded-md hover:opacity-90 transition">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </th>
+
+                    {{-- NAMA SATKER with Excel Filter --}}
+                    <th class="px-8 py-5 text-left border-r border-abubiru/20">
+                        <div class="relative inline-block text-left">
+                            <div class="flex items-center gap-1.5 cursor-pointer" onclick="monWawToggleFilter('nama_satker')">
+                                <span>NAMA SATKER</span>
+                                <svg class="w-3 h-3 text-biru3 hover:text-biru1 transition" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                            </div>
+                            <div id="monwaw-filter-nama_satker" class="hidden absolute left-0 top-full mt-1 z-40 bg-white border border-abubiru rounded-xl shadow-lg w-64 p-3 text-biru1 font-medium normal-case text-left">
+                                <input type="text" placeholder="Cari..." oninput="monWawFilterList('nama_satker', this.value)" class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2">
+                                <label class="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-biru2 cursor-pointer mb-1">
+                                    <input type="checkbox" id="monwaw-all-nama_satker" onchange="monWawToggleAll('nama_satker', this)" checked class="accent-biru2">
+                                    (Select All)
+                                </label>
+                                <div id="monwaw-list-nama_satker" class="max-h-40 overflow-y-auto space-y-1">
+                                    @foreach($submissions as $sub)
+                                        @if($sub->user && $sub->user->masterSatker)
+                                        <label class="monwaw-item-nama_satker flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-biru5/20 cursor-pointer text-xs" data-value="{{ strtolower($sub->user->masterSatker->nama_satker) }}">
+                                            <input type="checkbox" class="monwaw-cb-nama_satker accent-biru2" value="{{ strtolower($sub->user->masterSatker->nama_satker) }}" checked>
+                                            {{ $sub->user->masterSatker->nama_satker }}
+                                        </label>
+                                        @endif
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-abubiru">
+                                    <button type="button" onclick="monWawCloseFilter('nama_satker')" class="px-3 py-1 text-xs font-semibold border border-abubiru rounded-md hover:bg-slate-50 transition">Batal</button>
+                                    <button type="button" onclick="monWawApplyFilter('nama_satker')" class="px-3 py-1 text-xs font-bold bg-hijau text-white rounded-md hover:opacity-90 transition">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </th>
+
+                    {{-- PETUGAS with Excel Filter --}}
+                    <th class="px-8 py-5 text-left border-r border-abubiru/20">
+                        <div class="relative inline-block text-left">
+                            <div class="flex items-center gap-1.5 cursor-pointer" onclick="monWawToggleFilter('evaluator')">
+                                <span>PETUGAS</span>
+                                <svg class="w-3 h-3 text-biru3 hover:text-biru1 transition" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                            </div>
+                            <div id="monwaw-filter-evaluator" class="hidden absolute left-0 top-full mt-1 z-40 bg-white border border-abubiru rounded-xl shadow-lg w-64 p-3 text-biru1 font-medium normal-case text-left">
+                                <input type="text" placeholder="Cari nama pewawancara..." oninput="monWawFilterList('evaluator', this.value)" class="w-full rounded-lg border border-abubiru px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-biru2">
+                                <label class="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-biru2 cursor-pointer mb-1">
+                                    <input type="checkbox" id="monwaw-all-evaluator" onchange="monWawToggleAll('evaluator', this)" checked class="accent-biru2">
+                                    (Select All)
+                                </label>
+                                <div id="monwaw-list-evaluator" class="max-h-40 overflow-y-auto space-y-1">
+                                    @foreach($evaluators as $ev)
+                                        <label class="monwaw-item-evaluator flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-biru5/20 cursor-pointer text-xs" data-value="{{ strtolower($ev->name) }}">
+                                            <input type="checkbox" class="monwaw-cb-evaluator accent-biru2" value="{{ strtolower($ev->name) }}" checked>
+                                            {{ $ev->name }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-abubiru">
+                                    <button type="button" onclick="monWawCloseFilter('evaluator')" class="px-3 py-1 text-xs font-semibold border border-abubiru rounded-md hover:bg-slate-50 transition">Batal</button>
+                                    <button type="button" onclick="monWawApplyFilter('evaluator')" class="px-3 py-1 text-xs font-bold bg-hijau text-white rounded-md hover:opacity-90 transition">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </th>
+
+                    <th class="px-8 py-5 text-left border-r border-abubiru/20">JADWAL WAWANCARA</th>
+
+                    {{-- STATUS with Excel Filter --}}
+                    <th class="px-8 py-5 text-center border-r border-abubiru/20">
+                        <div class="relative inline-block text-left">
+                            <div class="flex items-center justify-center gap-1 cursor-pointer" onclick="monWawToggleFilter('status')">
+                                <span>STATUS</span>
+                                <svg class="w-3 h-3 text-biru3 hover:text-biru1 transition" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                </svg>
+                            </div>
+                            <div id="monwaw-filter-status" class="hidden absolute right-0 top-full mt-1 z-40 bg-white border border-abubiru rounded-xl shadow-lg w-44 p-3 text-biru1 font-medium normal-case text-left">
+                                <label class="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-biru2 cursor-pointer mb-1">
+                                    <input type="checkbox" id="monwaw-all-status" onchange="monWawToggleAll('status', this)" checked class="accent-biru2">
+                                    (Select All)
+                                </label>
+                                <div id="monwaw-list-status" class="space-y-1">
+                                    @foreach(['belum_dinilai' => 'Belum Dinilai', 'draft' => 'Draft Penilaian', 'sudah_dinilai' => 'Sudah Dinilai'] as $sKey => $sLabel)
+                                        <label class="monwaw-item-status flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-biru5/20 cursor-pointer text-xs" data-value="{{ $sKey }}">
+                                            <input type="checkbox" class="monwaw-cb-status accent-biru2" value="{{ $sKey }}" checked>
+                                            {{ $sLabel }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <div class="flex justify-end gap-2 mt-3 pt-2 border-t border-abubiru">
+                                    <button type="button" onclick="monWawCloseFilter('status')" class="px-3 py-1 text-xs font-semibold border border-abubiru rounded-md hover:bg-slate-50 transition">Batal</button>
+                                    <button type="button" onclick="monWawApplyFilter('status')" class="px-3 py-1 text-xs font-bold bg-hijau text-white rounded-md hover:opacity-90 transition">OK</button>
+                                </div>
+                            </div>
+                        </div>
+                    </th>
+
+                    <th class="px-8 py-5 text-center border-r border-abubiru/20">NILAI</th>
+                    <th class="px-8 py-5 text-center">AKSI</th>
+                </tr>
+            </thead>
+        </x-slot>
+
+        @forelse($submissions as $sub)
+            @php
+                $int = $sub->interview;
+                $satker = $sub->result?->satker;
+                $isSudahDinilai = ($sub->status >= 6 || ($int && $int->score_interviewer_1 !== null && $int->score_interviewer_2 !== null && $int->score_interviewer_3 !== null));
+            @endphp
+            @if($satker)
+                <tr wire:key="monwaw-row-{{ $sub->id_submission }}" class="border-t border-abubiru/30 hover:bg-abubiru/10 transition">
+                    <td class="px-8 py-5 text-sm font-bold text-biru1 border-r border-abubiru/20">
+                        {{ $sub->period->tahun }}
+                    </td>
+                    <td class="px-8 py-5 border-r border-abubiru/20 text-center">
+                        <div class="font-bold text-biru1 text-sm">{{ $satker->kode_satker }}</div>
+                    </td>
+                    <td class="px-8 py-5 border-r border-abubiru/20">
+                        <div class="font-bold text-biru1 text-sm">{{ $satker->nama_satker }}</div>
+                    </td>
+                    <td class="px-8 py-5 text-sm font-medium text-biru2 border-r border-abubiru/20">
+                        @php
+                            $interviewers = array_filter([
+                                $int?->interviewer1?->name ?? null,
+                                $int?->interviewer2?->name ?? null,
+                                $int?->interviewer3?->name ?? null,
+                            ]);
+                        @endphp
+                        @if($int && $int->interview_at && count($interviewers) > 0)
+                            @foreach($interviewers as $interviewer)
+                                <div>{{ $interviewer }}</div>
+                            @endforeach
+                        @else
+                            -
+                        @endif
+                    </td>
+                    <td class="px-8 py-5 text-biru3 border-r border-abubiru/20">
+                        @if($int && $int->interview_at)
+                            <div class="flex items-center gap-2.5">
+                                <svg class="w-4 h-4 text-biru4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span class="text-sm font-bold">{{ \Carbon\Carbon::parse($int->interview_at)->translatedFormat('d M Y') }}</span>
+                            </div>
+                        @else
+                            <div class="inline-flex items-center gap-1.5 rounded-lg bg-abubiru/40 text-biru4 border border-abubiru/60 px-3 py-1.5 text-xs font-bold w-fit">
+                                <svg class="w-4.5 h-4.5 text-biru4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span>Belum Dijadwalkan</span>
+                            </div>
+                        @endif
+                    </td>
+
+                    <td class="px-8 py-5 text-center border-r border-abubiru/20">
+                        @php
+                            $isWawancaraFinalized = ($int && $int->score_interviewer_1 !== null && !str_starts_with($int->note_interviewer_1 ?? '', '[DRAFT]')
+                                && $int->score_interviewer_2 !== null && !str_starts_with($int->note_interviewer_2 ?? '', '[DRAFT]')
+                                && $int->score_interviewer_3 !== null && !str_starts_with($int->note_interviewer_3 ?? '', '[DRAFT]'));
+                            $isAnyWawancaraScored = ($int && ($int->score_interviewer_1 !== null || $int->score_interviewer_2 !== null || $int->score_interviewer_3 !== null));
+                        @endphp
+                        @if($isWawancaraFinalized)
+                            <span class="inline-flex rounded-full bg-hijau2/10 text-hijau px-3 py-1.5 text-xs font-bold">
+                                Sudah Dinilai
+                            </span>
+                        @elseif($isAnyWawancaraScored)
+                            <span class="inline-flex rounded-full bg-oren2/10 text-oren2 px-3 py-1.5 text-xs font-bold">
+                                Draft Penilaian
+                            </span>
+                        @else
+                            <span class="inline-flex rounded-full bg-abubiru/50 text-biru4 px-3 py-1.5 text-xs font-bold">
+                                Belum Dinilai
+                            </span>
+                        @endif
+                    </td>
+                    <td class="px-8 py-5 text-center font-bold text-biru1 text-sm border-r border-abubiru/20">
+                        @if($int && $int->interview_score !== null)
+                            {{ number_format($int->interview_score, 2) }}
+                        @else
+                            -
+                        @endif
+                    </td>
+                <td class="px-8 py-5 text-center">
+                    @php
+                        $isSuperEval = Auth::user()?->role?->nama_role === 'super_evaluator';
+                        $isUserInterviewer = $int && (
+                            $int->interviewers->contains('id_user', Auth::id())
+                            || ($int->interviewer_1_id == Auth::id()) 
+                            || ($int->interviewer_2_id == Auth::id()) 
+                            || ($int->interviewer_3_id == Auth::id())
+                            || ($int->external_interviewer_id == Auth::id())
+                            || collect($int->interview_data ?? [])->contains(fn($item) => isset($item['id_user']) && (int)$item['id_user'] === (int)Auth::id())
+                        );
+                        $isScheduled = $int && $int->interview_at;
+                    @endphp
+                    @if ($isScheduled && ($isSuperEval || $isUserInterviewer))
+                        <div class="flex items-center justify-center gap-2">
+                            @if ($isSuperEval && !$isSudahDinilai)
+                                <button @click="selectedInterviewIds = ['{{ $sub->id_result }}']; selectedInterviewId = '{{ $int ? $int->id_interview : '' }}'; isEditScheduled = true; modalTitle = 'Edit Jadwal Wawancara'; selectedSatkerName = '{{ $satker ? ('(' . $satker->kode_satker . ') ' . $satker->nama_satker) : 'BPS Kab/Kota' }}'; interviewDate = '{{ $int->interview_at ? \Carbon\Carbon::parse($int->interview_at)->format('Y-m-d') : '' }}'; meetsLink = '{{ $int ? $int->meets_link : '' }}'; interviewer1Id = '{{ $int->interviewer_1_id ?? '' }}'; interviewer2Id = '{{ $int->interviewer_2_id ?? '' }}'; interviewer3Id = '{{ $int->interviewer_3_id ?? '' }}'; externalInterviewerId = '{{ $int ? ($int->external_interviewer_id ?? '') : '' }}'; externalInterviewerIds = {{ json_encode($int ? $int->external_interviewer_ids : []) }}; showJadwalModal = true"
+                                    class="inline-flex items-center justify-center rounded-lg bg-oren2 px-3 py-1.5 text-xs text-white hover:opacity-90 font-bold transition shadow-xs cursor-pointer"
+                                    title="Edit Jadwal">
+                                    Edit
+                                </button>
+                            @endif
+                            <a href="{{ route('evaluasi.wawancara.review', \App\Helpers\SecureId::encrypt($int->id_interview)) }}"
+                                wire:navigate.hover
+                                class="inline-flex items-center justify-center rounded-lg bg-biru2 px-3 py-1.5 text-xs text-white hover:opacity-90 font-bold transition shadow-xs"
+                                title="Nilai">
+                                Nilai
+                            </a>
+                        </div>
+                    @elseif ($isScheduled && $isSuperEval && !$isSudahDinilai)
+                        <div class="flex items-center justify-center gap-2">
+                            <button @click="selectedInterviewIds = ['{{ $int->id_interview }}']; selectedInterviewId = '{{ $int->id_interview }}'; isEditScheduled = true; modalTitle = 'Edit Jadwal Wawancara'; selectedSatkerName = '{{ $satker ? ('(' . $satker->kode_satker . ') ' . $satker->nama_satker) : 'BPS Kab/Kota' }}'; interviewDate = '{{ \Carbon\Carbon::parse($int->interview_at)->format('Y-m-d') }}'; meetsLink = '{{ $int->meets_link }}'; interviewer1Id = '{{ $int->interviewer_1_id }}'; interviewer2Id = '{{ $int->interviewer_2_id }}'; interviewer3Id = '{{ $int->interviewer_3_id }}'; externalInterviewerId = '{{ $int ? ($int->external_interviewer_id ?? '') : '' }}'; externalInterviewerIds = {{ json_encode($int ? $int->external_interviewer_ids : []) }}; showJadwalModal = true"
+                                class="inline-flex items-center justify-center rounded-lg bg-oren2 px-3 py-1.5 text-xs text-white hover:opacity-90 font-bold transition shadow-xs cursor-pointer"
+                                title="Edit Jadwal">
+                                Edit
+                            </button>
+                        </div>
+                    @else
+                        <span class="text-xs text-biru3 font-medium">-</span>
+                    @endif
+                </td>
+                </tr>
+            @endif
+        @empty
+            <tr wire:key="monwaw-row-empty">
+                <td colspan="9" class="px-8 py-5 text-center text-sm font-medium text-biru3">
+                    Tidak ada data Kabupaten/Kota yang sesuai filter atau tahap wawancara.
+                </td>
+            </tr>
+        @endforelse
+
+        <x-slot name="pagination">
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-4 w-full text-sm text-biru3 font-semibold bg-white">
+                <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-center sm:text-left w-full lg:w-auto">
+                    <div class="whitespace-nowrap">Menampilkan {{ $submissions->firstItem() ?? 0 }} - {{ $submissions->lastItem() ?? 0 }} dari {{ $submissions->total() }} data</div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-xs font-bold text-biru3 uppercase whitespace-nowrap">Tampilkan:</span>
+                        <select wire:model.live="perPage" class="rounded-lg border border-abubiru bg-white px-2.5 py-1 text-xs text-biru1 font-bold focus:outline-none cursor-pointer">
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center justify-center gap-1.5 w-full lg:w-auto flex-wrap">
+                    @if ($submissions->onFirstPage())
+                        <span class="w-9 h-9 rounded-lg border border-abubiru bg-white text-biru4 flex items-center justify-center cursor-not-allowed opacity-50">
+                            <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </span>
+                    @else
+                        <button type="button" wire:click="previousPage" class="w-9 h-9 rounded-lg border border-abubiru bg-white text-biru4 flex items-center justify-center hover:bg-putihbg transition cursor-pointer">
+                            <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                    @endif
+
+                    @php
+                        $startPage = max(1, $submissions->currentPage() - 2);
+                        $endPage = min($submissions->lastPage(), $submissions->currentPage() + 2);
+                    @endphp
+                    @for ($p = $startPage; $p <= $endPage; $p++)
+                        @if ($p == $submissions->currentPage())
+                            <span class="w-9 h-9 rounded-lg bg-biru1 text-white font-bold flex items-center justify-center shadow-md">{{ $p }}</span>
+                        @else
+                            <button type="button" wire:click="gotoPage({{ $p }})" class="w-9 h-9 rounded-lg border border-abubiru bg-white text-biru3 font-bold hover:bg-putihbg flex items-center justify-center transition cursor-pointer">{{ $p }}</button>
+                        @endif
+                    @endfor
+
+                    @if ($submissions->hasMorePages())
+                        <button type="button" wire:click="nextPage" class="w-9 h-9 rounded-lg border border-abubiru bg-white text-biru4 flex items-center justify-center hover:bg-putihbg transition cursor-pointer">
+                            <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    @else
+                        <span class="w-9 h-9 rounded-lg border border-abubiru bg-white text-biru4 flex items-center justify-center cursor-not-allowed opacity-50">
+                            <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                        </span>
+                    @endif
+                </div>
+            </div>
+        </x-slot>
+    </x-tables.monitoring-table>
+</div>
+
+<script>
+    const _monWawWireMap = {
+        'tahun':       'setFilterTahun',
+        'kode_satker': 'setFilterKodeSatker',
+        'nama_satker': 'setFilterNamaSatker',
+        'evaluator':   'setFilterEvaluator',
+        'status':      'setFilterStatus',
+    };
+    function monWawToggleFilter(col) { toggleGenericTableFilter('monwaw', col); }
+    function monWawCloseFilter(col) { closeGenericTableFilter('monwaw', col); }
+    function monWawToggleAll(col, cb) { toggleGenericTableAll('monwaw', col, cb); }
+    function monWawFilterList(col, q) { filterGenericTableList('monwaw', col, q); }
+    function monWawApplyFilter(col, btnEl) { applyGenericTableFilter('monwaw', col, _monWawWireMap, @this); }
+    function monWawResetAllFilters() {
+        document.querySelectorAll('.monwaw-cb-tahun, .monwaw-cb-kode_satker, .monwaw-cb-nama_satker, .monwaw-cb-evaluator, .monwaw-cb-status').forEach(cb => cb.checked = true);
+        document.querySelectorAll('#monwaw-all-tahun, #monwaw-all-kode_satker, #monwaw-all-nama_satker, #monwaw-all-evaluator, #monwaw-all-status').forEach(cb => cb.checked = true);
+    }
+    function toggleAllWawKota(el) { toggleAllModalItems(el, 'waw-kota-checkbox'); }
+    function filterWawKotaList(val) { filterModalItems(val, 'waw-kota-item'); }
+    function handleExportWawancaraSubmit(event, form) { handleExportSubmit(event, form, 'modal-export-wawancara'); }
+</script>

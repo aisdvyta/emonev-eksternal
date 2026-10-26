@@ -30,6 +30,6 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="SYNC_SECRET" value="test-secret-value"/>
-        <env name="EXTERNAL_LOGIN_OTP" value="false"/>
+        
     </php>
 </phpunit>

@@ -23,23 +23,18 @@ class SecurityHeadersMiddleware
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
         $response->headers->set('X-Robots-Tag', 'noindex, nofollow, noarchive');
 
-        // Halaman ini tidak memakai script inline maupun CDN, jadi CSP bisa ditegakkan (bukan Report-Only).
-        // Saat development (Vite dev server di host lain) CSP dilewati.
-        if (! app()->environment('local')) {
-            $response->headers->set(
-                'Content-Security-Policy',
-                "default-src 'self'; "
-                ."script-src 'self'; "
-                ."style-src 'self' 'unsafe-inline'; "
-                ."img-src 'self' data:; "
-                ."font-src 'self' data:; "
-                ."connect-src 'self'; "
-                ."object-src 'none'; "
-                ."base-uri 'self'; "
-                ."form-action 'self'; "
-                ."frame-ancestors 'none'"
-            );
-        }
+        // Tampilan disalin dari sistem pusat (Alpine/Livewire memakai script inline), jadi CSP dijalankan
+        // dalam mode Report-Only seperti di pusat. Pembatasan sumber lain tetap berlaku.
+        $response->headers->set(
+            'Content-Security-Policy-Report-Only',
+            "default-src 'self'; "
+            ."script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; "
+            ."style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+            ."font-src 'self' https://fonts.gstatic.com data:; "
+            ."img-src 'self' data: blob: https:; "
+            ."connect-src 'self' ws: wss: https://server.arcgisonline.com; "
+            ."object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        );
 
         $response->headers->remove('X-Powered-By');
 

@@ -3,21 +3,43 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
-/**
- * Jawaban satker. Sengaja tidak memuat skor/catatan evaluator.
- */
 class Answer extends Model
 {
+    use HasUuids;
+
     protected $table = 'answer';
     protected $primaryKey = 'id_answer';
-    public $incrementing = false;
     protected $keyType = 'string';
+    public $incrementing = false;
     public $timestamps = false;
-    protected $guarded = [];
 
-    protected function casts(): array
+    protected $fillable = [
+        'id_question',
+        'id_submission',
+        'id_indicators',
+        'answer',
+        'link_ppid',
+        'link_drive',
+        'answer_score',
+        'evaluator_note',
+        'evaluator_at',
+        'verifikator_note',
+    ];
+
+    public function submission()
     {
-        return ['answer' => 'boolean'];
+        return $this->belongsTo(Submission::class, 'id_submission', 'id_submission');
+    }
+
+    public function question()
+    {
+        return $this->belongsTo(MasterPertanyaan::class, 'id_question', 'id_master_pertanyaan');
+    }
+
+    public function indicator()
+    {
+        return $this->belongsTo(MasterIndikator::class, 'id_indicators', 'id_indicators');
     }
 }

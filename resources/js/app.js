@@ -1,26 +1,32 @@
-// Tanpa framework JS: halaman dirender server-side. Skrip ini hanya mencegah klik ganda pada tombol kirim.
-document.addEventListener('submit', (event) => {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement)) {
-        return;
+import '../css/app.css';
+import './bootstrap';
+import './card-exporter';
+import './excel-table-filter';
+import './async-form';
+
+// Lazy-load ECharts hanya saat dibutuhkan — tidak memblokir initial page load.
+// Gunakan window.loadECharts() dari halaman yang butuh chart,
+// atau tunggu event 'echarts:ready' sebelum menginisialisasi chart.
+window.loadECharts = function () {
+    if (window._echartsPromise) return window._echartsPromise;
+    window._echartsPromise = import('echarts').then((mod) => {
+        window.echarts = mod.default || mod;
+        window.dispatchEvent(new Event('echarts:ready'));
+        return window.echarts;
+    });
+    return window._echartsPromise;
+};
+
+// Auto-load ECharts jika halaman memiliki elemen [data-echarts]
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('[data-echarts]')) {
+        window.loadECharts();
     }
+});
 
-    const submitter = event.submitter;
-    // Tombol yang diklik tetap mengirim nilainya (name=action); nonaktifkan setelah event selesai.
-    window.setTimeout(() => {
-        form.querySelectorAll('button[type="submit"]').forEach((button) => {
-            button.disabled = true;
-            button.classList.add('opacity-60', 'cursor-not-allowed');
-        });
-    }, 0);
-
-    if (submitter && submitter.dataset.confirm && !window.confirm(submitter.dataset.confirm)) {
-        event.preventDefault();
-        window.setTimeout(() => {
-            form.querySelectorAll('button[type="submit"]').forEach((button) => {
-                button.disabled = false;
-                button.classList.remove('opacity-60', 'cursor-not-allowed');
-            });
-        }, 0);
+// Re-check setelah Livewire SPA navigate
+document.addEventListener('livewire:navigated', () => {
+    if (document.querySelector('[data-echarts]') && !window.echarts) {
+        window.loadECharts();
     }
 });

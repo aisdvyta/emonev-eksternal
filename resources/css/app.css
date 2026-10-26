@@ -1,13 +1,34 @@
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../../app/**/*.php';
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
+/* ===== FOUC Prevention =====
+   Aturan ini meng-override inline style 'visibility:hidden' di head.
+   Dieksekusi saat Vite selesai inject CSS, sehingga halaman muncul
+   hanya setelah semua Tailwind class sudah siap. */
+html {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.15s ease-in;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
 @theme {
-    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
 
     --color-merah1: #B71C1C;
+    --color-merah1muda: #BA5757;
     --color-merah2: #E82D1F;
+    --color-oren: #F15A42;
+    --color-oren2: #EB891B;
     --color-kuning1: #F7B750;
     --color-kuning2: #FEE9A3;
     --color-biru1: #063051;
@@ -15,22 +36,79 @@
     --color-biru3: #4987A0;
     --color-biru4: #4C84B0;
     --color-biru5: #C7D9E5;
+    --color-biru6: #0093DD;
     --color-birumuda: #E2F1FB;
+    --color-biruinfo: #0093DD;
     --color-hijau: #388E3C;
-    --color-hijaumuda: #E8F5E9;
+    --color-hijau2: #90CC93;
+    --color-hijaumuda: #5FB463;
+    --color-hijaumuda2: #F8FFF8;
+    --color-hijauneon: #68B92E;
+    --color-abubiru: #E3E9ED;
     --color-abu: #737780;
     --color-abumuda: #D1D5D8;
     --color-putihbg: #F3F8FB;
 }
 
-@layer components {
-    .card { @apply bg-white rounded-xl border border-biru5 shadow-sm p-5; }
-    .label { @apply block text-sm font-semibold text-biru1 mb-1; }
-    .input { @apply block w-full rounded-lg border border-abumuda bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-biru4 disabled:bg-slate-100 disabled:text-slate-500; }
-    /* Tailwind v4: @apply tidak bisa memakai kelas komponen buatan sendiri, jadi utilitas ditulis lengkap. */
-    .btn-primary { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition bg-biru1 text-white hover:bg-biru2; }
-    .btn-outline { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition border border-biru4 text-biru2 bg-white hover:bg-birumuda; }
-    .badge { @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold; }
-    .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-abu; }
-    .td { @apply px-3 py-3 text-sm align-top; }
+/* ===== Responsive Utilities ===== */
+
+/* Prevent body scroll when mobile sidebar drawer is open */
+body.overflow-hidden {
+    overflow: hidden !important;
+}
+
+/* Custom scrollbar for scroll areas */
+.custom-scrollbar {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #C7D9E5 transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #C7D9E5;
+    border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #4C84B0;
+}
+
+/* Transparent / Invisible scrollbar (scroll tetap aktif tanpa menampilkan visual scrollbar) */
+.scrollbar-transparent {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+.scrollbar-transparent::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+    width: 0px;
+    height: 0px;
+    background: transparent;
+}
+
+/* Smooth transform for sidebar on mobile - only hint GPU during animation */
+aside {
+    will-change: auto;
+}
+aside.sidebar-animating {
+    will-change: transform;
+}
+
+
+/* ===== Animasi Pulse 2 Warna (biru1 dan biru4) Point Fase Saat Ini ===== */
+@keyframes pulse-biru {
+    0%, 100% {
+        background-color: #063051; /* biru1 */
+    }
+    50% {
+        background-color: #4C84B0; /* biru4 */
+    }
+}
+
+.animate-pulse-biru {
+    animation: pulse-biru 1.8s ease-in-out infinite;
 }

@@ -8,10 +8,18 @@ class Result extends Model
 {
     protected $table = 'result';
     protected $primaryKey = 'id_result';
-    public $incrementing = false;
-    protected $keyType = 'int';
     public $timestamps = false;
-    protected $guarded = [];
+
+    protected $fillable = [
+        'kode_satker',
+        'id_periode',
+        'ques_score',
+        'visit_score',
+        'interview_score',
+        'final_score',
+        'index_label',
+        'published_at',
+    ];
 
     public function satker()
     {

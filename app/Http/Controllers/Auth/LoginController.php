@@ -3,56 +3,67 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Services\LoginOtp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 
+/**
+ * Login lokal untuk penilai eksternal (disalin dari LoginController pusat; SSO BPS tidak ada di satelit).
+ * Hanya akun berperan penilai_eksternal yang boleh masuk.
+ */
 class LoginController extends Controller
 {
-    public function show()
+    public function showLoginForm()
     {
-        return view('auth.login');
+        if (Auth::check()) {
+            return redirect()->route('penilai-eksternal.index');
+        }
+
+        $activePeriod = \App\Models\Period::orderByDesc('periode_start')->first() ?? \App\Models\Period::getActivePeriod();
+
+        return view('login', compact('activePeriod'));
     }
 
-    public function login(Request $request, LoginOtp $otp)
+    public function login(Request $request)
     {
-        $data = $request->validate([
-            'login' => 'required|string|max:191',
+        $request->validate([
+            'nama_user' => 'required|string|max:255',
             'password' => 'required|string|max:255',
         ]);
 
-        $login = trim($data['login']);
-        $isEmail = filter_var($login, FILTER_VALIDATE_EMAIL) !== false;
-        $user = User::query()
-            ->where($isEmail ? 'email' : 'nama_user', $isEmail ? mb_strtolower($login) : $login)
-            ->first();
+        $nama_user = trim((string) $request->input('nama_user'));
+        $password = $request->input('password');
 
-        // Hash::check tetap dijalankan walau akun tidak ada, agar waktu respons tidak membocorkan keberadaan akun.
-        $passwordOk = Hash::check($data['password'], $user?->password ?? '$2y$12$DPzRSU0YskyG/QRXTchj0OmcH.KUEBdmIMgv2VHiFPQ/TuB2v6p7O');
+        // Username atau email
+        $isEmail = filter_var($nama_user, FILTER_VALIDATE_EMAIL) !== false;
+        $credentials = [
+            $isEmail ? 'email' : 'nama_user' => $isEmail ? mb_strtolower($nama_user) : $nama_user,
+            'password' => $password,
+        ];
 
-        if (! $user || ! $passwordOk || ! $user->is_active) {
-            return back()->withErrors(['login' => 'Akun atau kata sandi salah.'])->onlyInput('login');
-        }
+        if (Auth::attempt($credentials) && Auth::user()->hasRole('penilai_eksternal')) {
+            $request->session()->regenerate();
+            Auth::user()->forceFill(['last_login_at' => now()])->save();
+            $redirect = redirect()->intended(route('penilai-eksternal.index'));
 
-        if (config('external.login_otp')) {
-            try {
-                $otp->issue($user);
-            } catch (\Throwable $e) {
-                report($e);
-
-                return back()->withErrors(['login' => 'Kode verifikasi tidak dapat dikirim. Coba lagi beberapa saat atau hubungi admin.'])
-                    ->onlyInput('login');
+            if ($request->expectsJson()) {
+                return response()->json(['success' => true, 'redirect_url' => $redirect->getTargetUrl()]);
             }
 
-            $request->session()->regenerate();
-            $request->session()->put('otp_user_id', $user->id_user);
-
-            return redirect()->route('login.otp');
+            return $redirect;
         }
 
-        return $this->completeLogin($request, $user);
+        // Akun bukan penilai eksternal tidak boleh punya sesi di sini.
+        if (Auth::check()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['errors' => ['nama_user' => ['Username/Email atau Password salah.']]], 422);
+        }
+
+        return back()->withErrors(['nama_user' => 'Username/Email atau Password salah.'])->onlyInput('nama_user');
     }
 
     public function logout(Request $request)
@@ -61,21 +72,6 @@ class LoginController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login')->with('success', 'Anda telah keluar.');
-    }
-
-    public static function finish(Request $request, User $user)
-    {
-        Auth::login($user);
-        $request->session()->regenerate();
-        $request->session()->forget('otp_user_id');
-        $user->forceFill(['last_login_at' => now()])->save();
-
-        return redirect()->intended(route('penilai-eksternal.index'));
-    }
-
-    private function completeLogin(Request $request, User $user)
-    {
-        return self::finish($request, $user);
+        return redirect()->route('login')->with('success', 'Anda telah berhasil keluar.');
     }
 }

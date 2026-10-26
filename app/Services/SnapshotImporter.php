@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -50,13 +51,26 @@ class SnapshotImporter
             'cols' => ['order_no', 'id_sub_indicators', 'id_indicators', 'ques_text', 'ques_description',
                 'doc_requirement', 'link_drive', 'link_ppid', 'bobot_pertanyaan'],
         ],
+        'master_pembobotan' => [
+            'pk' => ['id_pembobotan'],
+            'cols' => ['id_periode', 'weight_saq', 'weight_visitasi', 'weight_wawancara', 'threshold_saq',
+                'bobot_indikator', 'stage_order'],
+        ],
+        'master_link' => [
+            'pk' => ['id_link'],
+            'cols' => ['id_periode', 'link_panduan', 'link_drive_review_saq'],
+        ],
+        // Skor akhir hanya dikirim pusat untuk periode yang sudah selesai & dipublikasikan.
         'result' => [
             'pk' => ['id_result'],
-            'cols' => ['kode_satker', 'id_periode'],
+            'cols' => ['kode_satker', 'id_periode', 'ques_score', 'visit_score', 'interview_score', 'final_score',
+                'index_label', 'published_at'],
+            'datetimes' => ['published_at'],
         ],
         'submissions' => [
             'pk' => ['id_submission'],
-            'cols' => ['id_result', 'status'],
+            'cols' => ['id_result', 'status', 'interview_status', 'submitted_at', 'evaluated_at'],
+            'datetimes' => ['submitted_at', 'evaluated_at'],
         ],
         'answer' => [
             'pk' => ['id_answer'],
@@ -68,13 +82,19 @@ class SnapshotImporter
         ],
         'visitasi' => [
             'pk' => ['id_visit'],
-            'cols' => ['id_result', 'visit_mode', 'link_meet_visitasi', 'visit_at', 'link_buktidukung', 'is_final'],
+            'cols' => ['id_result', 'visit_mode', 'link_meet_visitasi', 'visit_at', 'link_buktidukung', 'is_final',
+                'visit_score', 'visit_note'],
             'dates' => ['visit_at'],
         ],
         'interview' => [
             'pk' => ['id_interview'],
-            'cols' => ['id_result', 'link_meet_interview', 'interview_at', 'is_final'],
+            'cols' => ['id_result', 'link_meet_interview', 'interview_at', 'is_final', 'interview_score'],
             'dates' => ['interview_at'],
+        ],
+        'kabag_komentars' => [
+            'pk' => ['id_komentar_kabag'],
+            'cols' => ['id_periode', 'id_user', 'komentar', 'created_at'],
+            'datetimes' => ['created_at'],
         ],
     ];
 
@@ -87,8 +107,8 @@ class SnapshotImporter
     /** Tabel yang boleh di-prune (hapus baris yang tidak ada di payload). Users sengaja tidak termasuk. */
     private const PRUNABLE = [
         'periods', 'master_satker', 'master_indikator', 'master_sub_indikator', 'master_pertanyaan',
-        'result', 'submissions', 'answer', 'submission_evaluators', 'visitasi', 'interview',
-        'visitasi_evaluators', 'interview_evaluators',
+        'master_pembobotan', 'master_link', 'result', 'submissions', 'answer', 'submission_evaluators',
+        'visitasi', 'interview', 'visitasi_evaluators', 'interview_evaluators', 'kabag_komentars',
     ];
 
     /**
@@ -130,35 +150,42 @@ class SnapshotImporter
 
         $summary = [];
 
-        DB::transaction(function () use ($data, $deletions, $prune, &$summary) {
-            if (isset($data['users'])) {
-                $summary['users'] = $this->importUsers($data['users']);
-            }
-
-            foreach (self::TABLES as $table => $def) {
-                if (! isset($data[$table])) {
-                    continue;
+        // Urutan penerapan sudah parent-dulu; FK dimatikan sementara agar data dari pusat yang urutannya
+        // tidak sempurna (atau pemangkasan) tidak membuat seluruh snapshot gagal. Tidak berlaku di SQLite dalam transaksi.
+        Schema::disableForeignKeyConstraints();
+        try {
+            DB::transaction(function () use ($data, $deletions, $prune, &$summary) {
+                if (isset($data['users'])) {
+                    $summary['users'] = $this->importUsers($data['users']);
                 }
-                $summary[$table] = $this->upsertPlain($table, $def, $data[$table]);
-            }
 
-            foreach (self::EVALUATOR_TABLES as $table => $parentCol) {
-                if (isset($data[$table])) {
-                    $summary[$table] = $this->importEvaluators($table, $parentCol, $data[$table]);
+                foreach (self::TABLES as $table => $def) {
+                    if (! isset($data[$table])) {
+                        continue;
+                    }
+                    $summary[$table] = $this->upsertPlain($table, $def, $data[$table]);
                 }
-            }
 
-            foreach ($deletions as $table => $keys) {
-                $summary[$table]['deleted'] = ($summary[$table]['deleted'] ?? 0) + $this->applyDeletions($table, (array) $keys);
-            }
-
-            foreach ($prune as $table) {
-                if (! array_key_exists($table, $data)) {
-                    continue; // tidak ada daftar acuan = tidak ada yang dipangkas
+                foreach (self::EVALUATOR_TABLES as $table => $parentCol) {
+                    if (isset($data[$table])) {
+                        $summary[$table] = $this->importEvaluators($table, $parentCol, $data[$table]);
+                    }
                 }
-                $summary[$table]['pruned'] = $this->prune($table, $data[$table]);
-            }
-        });
+
+                foreach ($deletions as $table => $keys) {
+                    $summary[$table]['deleted'] = ($summary[$table]['deleted'] ?? 0) + $this->applyDeletions($table, (array) $keys);
+                }
+
+                foreach ($prune as $table) {
+                    if (! array_key_exists($table, $data)) {
+                        continue; // tidak ada daftar acuan = tidak ada yang dipangkas
+                    }
+                    $summary[$table]['pruned'] = $this->prune($table, $data[$table]);
+                }
+            });
+        } finally {
+            Schema::enableForeignKeyConstraints();
+        }
 
         return $summary;
     }
@@ -169,6 +196,7 @@ class SnapshotImporter
     {
         $count = 0;
         $skipped = 0;
+        $roleId = $this->externalRoleId();
 
         foreach ($rows as $row) {
             $id = $row['id_user'] ?? null;
@@ -178,13 +206,17 @@ class SnapshotImporter
                 continue;
             }
             $id = (int) $id;
+            $active = array_key_exists('is_active', $row) ? (bool) $row['is_active'] : true;
 
+            $namaUser = isset($row['nama_user']) && $row['nama_user'] !== '' ? (string) $row['nama_user'] : null;
             $attrs = [
-                'name' => (string) ($row['name'] ?? $row['nama_user'] ?? $email),
-                'nama_user' => isset($row['nama_user']) && $row['nama_user'] !== '' ? (string) $row['nama_user'] : null,
+                'name' => (string) ($row['name'] ?? $namaUser ?? $email),
+                'nama_user' => $namaUser ?? $email,
+                'instansi' => isset($row['instansi']) ? (string) $row['instansi'] : null,
+                'is_eksternal' => 1,
                 'email' => $email,
-                'is_active' => array_key_exists('is_active', $row) ? (bool) $row['is_active'] : true,
-                'updated_at' => now(),
+                // Pusat menonaktifkan akun = soft delete di sini (login ditolak dan sesi berjalan terputus).
+                'deleted_at' => $active ? null : now(),
             ];
 
             // Hash kata sandi hanya diterima bila berformat bcrypt ($2y$); tidak pernah menerima teks biasa.
@@ -205,14 +237,34 @@ class SnapshotImporter
                     'id_user' => $id,
                     // Tanpa hash dari pusat: kata sandi acak yang tidak bisa ditebak (set lewat artisan atau sinkron berikutnya).
                     'password' => $attrs['password'] ?? Hash::make(Str::random(48)),
-                    'created_at' => now(),
                 ];
                 DB::table('users')->insert($attrs);
             }
+
+            // Peran penilai_eksternal (Spatie). Akun yang dinonaktifkan tetap memegang peran; login ditolak lewat soft delete.
+            DB::table('model_has_roles')->insertOrIgnore([
+                'role_id' => $roleId, 'model_type' => \App\Models\User::class, 'model_id' => $id,
+            ]);
             $count++;
         }
 
+        if ($count > 0) {
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        }
+
         return ['upserted' => $count, 'skipped' => $skipped];
+    }
+
+    private function externalRoleId(): int
+    {
+        $role = DB::table('roles')->where('name', 'penilai_eksternal')->where('guard_name', 'web')->first();
+        if ($role) {
+            return (int) $role->id;
+        }
+
+        return (int) DB::table('roles')->insertGetId([
+            'name' => 'penilai_eksternal', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     // ---------------------------------------------------------------- tabel biasa
@@ -247,6 +299,9 @@ class SnapshotImporter
             }
             foreach ($def['dates'] ?? [] as $d) {
                 $out[$d] = $this->normalizeDate($out[$d] ?? null);
+            }
+            foreach ($def['datetimes'] ?? [] as $d) {
+                $out[$d] = $this->normalizeDateTime($out[$d] ?? null);
             }
             if ($table === 'submissions' && isset($out['status'])) {
                 $out['status'] = (int) $out['status'];
@@ -406,6 +461,18 @@ class SnapshotImporter
     }
 
     // ---------------------------------------------------------------- util
+
+    private function normalizeDateTime(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->setTimezone(config('app.timezone'))->toDateTimeString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
 
     private function normalizeDate(mixed $value): ?string
     {

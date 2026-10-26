@@ -26,16 +26,22 @@ class ExternalCreateUser extends Command
             return self::FAILURE;
         }
 
-        User::query()->updateOrCreate(
-            ['id_user' => (int) $this->argument('id_user')],
-            [
-                'email' => mb_strtolower($this->argument('email')),
-                'name' => $this->argument('name'),
-                'nama_user' => $this->option('nama-user') ?: null,
-                'password' => Hash::make($password),
-                'is_active' => true,
-            ]
-        );
+        $email = mb_strtolower($this->argument('email'));
+        $user = User::withTrashed()->find((int) $this->argument('id_user'))
+            ?? (new User())->forceFill(['id_user' => (int) $this->argument('id_user')]);
+        $user->forceFill([
+            'email' => $email,
+            'name' => $this->argument('name'),
+            'nama_user' => $this->option('nama-user') ?: $email,
+            'password' => Hash::make($password),
+            'is_eksternal' => true,
+        ])->save();
+        if ($user->trashed()) {
+            $user->restore();
+        }
+
+        \Spatie\Permission\Models\Role::findOrCreate('penilai_eksternal', 'web');
+        $user->assignRole('penilai_eksternal');
 
         $this->info('Akun disimpan.');
 
