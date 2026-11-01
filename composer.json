@@ -31,6 +31,10 @@
         }
     },
     "scripts": {
+        "dev": [
+            "Composer\\Config::disableProcessTimeout",
+            "npx concurrently -c \"#93c5fd,#fdba74\" \"php artisan serve\" \"npm run dev\" --names=server,vite"
+        ],
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
