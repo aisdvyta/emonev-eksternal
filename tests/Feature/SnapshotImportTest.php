@@ -67,4 +67,41 @@ class SnapshotImportTest extends TestCase
 
         $this->assertSame(0, DB::table('visitasi_evaluators')->where('id_user', 101)->count());
     }
+
+    public function test_recreated_account_with_new_id_replaces_the_old_one(): void
+    {
+        app(SnapshotImporter::class)->import($this->sampleSnapshot());
+
+        // Pusat dibersihkan lalu akun yang sama dibuat ulang dengan id baru (email & nama_user sama).
+        $snap = $this->sampleSnapshot();
+        $snap['data']['users'][0]['id_user'] = 300;
+        $snap['data']['submission_evaluators'] = [['id_submission' => 60, 'id_user' => 300]];
+        $snap['data']['visitasi_evaluators'] = [['id_visit' => '22222222-2222-2222-2222-222222222222', 'id_user' => 300]];
+        $snap['data']['interview_evaluators'] = [['id_interview' => 70, 'id_user' => 300]];
+        app(SnapshotImporter::class)->import($snap + ['prune' => []]);
+
+        $this->assertDatabaseMissing('users', ['id_user' => 200]);
+        $this->assertDatabaseHas('users', ['id_user' => 300, 'nama_user' => 'penilai200']);
+        $this->assertTrue(User::find(300)->hasRole('penilai_eksternal'));
+        $this->assertSame(0, DB::table('visitasi_evaluators')->where('id_user', 200)->count());
+    }
+
+    public function test_full_snapshot_prunes_rows_removed_at_pusat(): void
+    {
+        app(SnapshotImporter::class)->import($this->sampleSnapshot());
+        $this->assertDatabaseHas('interview', ['id_interview' => 70]);
+        $this->assertDatabaseHas('answer', ['id_submission' => 60]);
+
+        // Pusat dibersihkan: snapshot penuh berikutnya hanya berisi data master.
+        $prune = ['periods', 'master_satker', 'master_indikator', 'master_sub_indikator', 'master_pertanyaan',
+            'master_pembobotan', 'master_link', 'result', 'submissions', 'submission_evaluators',
+            'visitasi', 'interview', 'visitasi_evaluators', 'interview_evaluators'];
+        $empty = array_fill_keys($prune, []);
+        $snap = ['mode' => 'full', 'prune' => $prune, 'data' => $empty + ['users' => []]];
+        app(SnapshotImporter::class)->import($snap);
+
+        foreach (['result', 'submissions', 'visitasi', 'interview', 'visitasi_evaluators', 'interview_evaluators', 'answer'] as $t) {
+            $this->assertSame(0, DB::table($t)->count(), $t);
+        }
+    }
 }

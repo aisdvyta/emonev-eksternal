@@ -182,6 +182,13 @@ class SnapshotImporter
                     }
                     $summary[$table]['pruned'] = $this->prune($table, $data[$table]);
                 }
+
+                // Jawaban dikirim terpisah (tanpa prune): buang jawaban milik submission yang sudah dipangkas.
+                if (in_array('submissions', $prune, true) && array_key_exists('submissions', $data)) {
+                    $summary['answer']['pruned'] = DB::table('answer')
+                        ->whereNotIn('id_submission', DB::table('submissions')->select('id_submission'))
+                        ->delete();
+                }
             });
         } finally {
             Schema::enableForeignKeyConstraints();
@@ -229,6 +236,16 @@ class SnapshotImporter
                 $attrs['password'] = $hash;
             }
 
+            // Pusat adalah sumber kebenaran: akun lain dengan email/nama_user yang sama tetapi id berbeda (mis. pusat
+            // dibersihkan lalu akun dibuat ulang dengan id baru) disingkirkan, supaya tidak melanggar unique index
+            // dan memacetkan seluruh sinkronisasi.
+            $conflicts = DB::table('users')->where('id_user', '!=', $id)
+                ->where(fn ($q) => $q->where('email', $email)->orWhere('nama_user', $attrs['nama_user']))
+                ->pluck('id_user')->all();
+            if ($conflicts) {
+                $this->removeUsers($conflicts);
+            }
+
             $existing = DB::table('users')->where('id_user', $id)->first();
             if ($existing) {
                 DB::table('users')->where('id_user', $id)->update($attrs);
@@ -253,6 +270,16 @@ class SnapshotImporter
         }
 
         return ['upserted' => $count, 'skipped' => $skipped];
+    }
+
+    /** @param  array<int, int|string>  $ids */
+    private function removeUsers(array $ids): void
+    {
+        DB::table('model_has_roles')->where('model_type', \App\Models\User::class)->whereIn('model_id', $ids)->delete();
+        DB::table('submission_evaluators')->whereIn('id_user', $ids)->delete();
+        DB::table('visitasi_evaluators')->whereIn('id_user', $ids)->delete();
+        DB::table('interview_evaluators')->whereIn('id_user', $ids)->delete();
+        DB::table('users')->whereIn('id_user', $ids)->delete();
     }
 
     private function externalRoleId(): int
