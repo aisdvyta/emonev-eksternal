@@ -104,9 +104,12 @@ class SnapshotImporter
         'interview_evaluators' => 'id_interview',
     ];
 
-    /** Tabel yang boleh di-prune (hapus baris yang tidak ada di payload). Users sengaja tidak termasuk. */
+    /**
+     * Tabel yang boleh di-prune (hapus baris yang tidak ada di payload). `users` khusus: akun eksternal yang
+     * tidak lagi ada di pusat dinonaktifkan (soft delete), bukan dihapus.
+     */
     private const PRUNABLE = [
-        'periods', 'master_satker', 'master_indikator', 'master_sub_indikator', 'master_pertanyaan',
+        'users', 'periods', 'master_satker', 'master_indikator', 'master_sub_indikator', 'master_pertanyaan',
         'master_pembobotan', 'master_link', 'result', 'submissions', 'answer', 'submission_evaluators',
         'visitasi', 'interview', 'visitasi_evaluators', 'interview_evaluators', 'kabag_komentars',
     ];
@@ -449,6 +452,16 @@ class SnapshotImporter
     private function prune(string $table, array $rows): int
     {
         $deleted = 0;
+
+        if ($table === 'users') {
+            // Akun eksternal yang sudah tidak ada di pusat: nonaktifkan (login ditolak, sesi terputus). Akun non-eksternal
+            // (mis. dibuat manual untuk keperluan lain) tidak disentuh.
+            $keep = array_values(array_filter(array_map(fn ($r) => is_numeric($r['id_user'] ?? null) ? (int) $r['id_user'] : null, $rows)));
+
+            return DB::table('users')->where('is_eksternal', 1)->whereNull('deleted_at')
+                ->when($keep, fn ($q) => $q->whereNotIn('id_user', $keep))
+                ->update(['deleted_at' => now()]);
+        }
 
         if (isset(self::EVALUATOR_TABLES[$table])) {
             $parentCol = self::EVALUATOR_TABLES[$table];

@@ -104,4 +104,32 @@ class SnapshotImportTest extends TestCase
             $this->assertSame(0, DB::table($t)->count(), $t);
         }
     }
+
+    public function test_full_snapshot_deactivates_external_accounts_missing_at_pusat(): void
+    {
+        $this->seedPortal(); // user 100 (penilai_eksternal) dan 101
+        DB::table('users')->whereIn('id_user', [100, 101])->update(['is_eksternal' => 1]);
+
+        // Pusat kini hanya punya akun 200.
+        $snap = $this->sampleSnapshot();
+        $snap['mode'] = 'full';
+        $snap['prune'] = ['users'];
+        app(SnapshotImporter::class)->import($snap);
+
+        $this->assertNull(User::find(200)->deleted_at);
+        $this->assertNotNull(User::withTrashed()->find(100)->deleted_at);
+        $this->assertNotNull(User::withTrashed()->find(101)->deleted_at);
+        $this->assertNull(User::find(100)); // tidak bisa login lagi
+    }
+
+    public function test_deactivated_account_is_restored_when_pusat_sends_it_again(): void
+    {
+        app(SnapshotImporter::class)->import($this->sampleSnapshot());
+        $snap = ['mode' => 'full', 'prune' => ['users'], 'data' => ['users' => []]];
+        app(SnapshotImporter::class)->import($snap);
+        $this->assertNotNull(User::withTrashed()->find(200)->deleted_at);
+
+        app(SnapshotImporter::class)->import($this->sampleSnapshot());
+        $this->assertNull(User::find(200)->deleted_at);
+    }
 }
